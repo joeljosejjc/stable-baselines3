@@ -102,6 +102,8 @@ class TD3(OffPolicyAlgorithm):
         seed: Optional[int] = None,
         device: Union[th.device, str] = "auto",
         _init_setup_model: bool = True,
+        spatial_similarity_coef = 0.1,
+        temporal_similarity_coef = 0.05,
     ):
         super().__init__(
             policy,
@@ -132,6 +134,9 @@ class TD3(OffPolicyAlgorithm):
         self.policy_delay = policy_delay
         self.target_noise_clip = target_noise_clip
         self.target_policy_noise = target_policy_noise
+
+        self.spatial_similarity_coef = spatial_similarity_coef
+        self.temporal_similarity_coef = temporal_similarity_coef
 
         if _init_setup_model:
             self._setup_model()
@@ -190,8 +195,19 @@ class TD3(OffPolicyAlgorithm):
 
             # Delayed policy updates
             if self._n_updates % self.policy_delay == 0:
+                
+                # Spatial Smoothness #TODO
+                noise = replay_data.observations.clone().data.normal_(0, 0.01)
+                similar_obs = replay_data.observations + noise
                 # Compute actor loss
                 actor_loss = -self.critic.q1_forward(replay_data.observations, self.actor(replay_data.observations)).mean()
+ 
+                if not self.spatial_similarity_coef == None:
+                    actor_loss += self.spatial_similarity_coef*F.mse_loss(self.actor(replay_data.observations) -self.actor(similar_obs)) / self.action_space.shape[0]
+
+                if not self.temporal_similarity_coef == None:
+                    actor_loss += self.temporal_similarity_coef*F.mse_loss(self.actor(replay_data.observations) -self.actor(replay_data.next_observations)) / self.action_space.shape[0]
+  
                 actor_losses.append(actor_loss.item())
 
                 # Optimize the actor

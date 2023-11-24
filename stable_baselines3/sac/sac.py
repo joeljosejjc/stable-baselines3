@@ -116,6 +116,8 @@ class SAC(OffPolicyAlgorithm):
         seed: Optional[int] = None,
         device: Union[th.device, str] = "auto",
         _init_setup_model: bool = True,
+        spatial_similarity_coef = 0.1,
+        temporal_similarity_coef = 0.05,
     ):
         super().__init__(
             policy,
@@ -152,6 +154,9 @@ class SAC(OffPolicyAlgorithm):
         self.ent_coef = ent_coef
         self.target_update_interval = target_update_interval
         self.ent_coef_optimizer: Optional[th.optim.Adam] = None
+
+        self.spatial_similarity_coef = spatial_similarity_coef
+        self.temporal_similarity_coef = temporal_similarity_coef
 
         if _init_setup_model:
             self._setup_model()
@@ -273,6 +278,16 @@ class SAC(OffPolicyAlgorithm):
             q_values_pi = th.cat(self.critic(replay_data.observations, actions_pi), dim=1)
             min_qf_pi, _ = th.min(q_values_pi, dim=1, keepdim=True)
             actor_loss = (ent_coef * log_prob - min_qf_pi).mean()
+
+            # Spatial Smoothness #TODO
+            noise = replay_data.observations.clone().data.normal_(0, 0.01)
+            similar_obs = replay_data.observations + noise
+            if not self.spatial_similarity_coef == None:
+                actor_loss += self.spatial_similarity_coef*F.mse_loss(self.actor(replay_data.observations) -self.actor(similar_obs)) / self.action_space.shape[0]
+
+            if not self.temporal_similarity_coef == None:
+                actor_loss += self.temporal_similarity_coef*F.mse_loss(self.actor(replay_data.observations) -self.actor(replay_data.next_observations)) / self.action_space.shape[0]
+
             actor_losses.append(actor_loss.item())
 
             # Optimize the actor
