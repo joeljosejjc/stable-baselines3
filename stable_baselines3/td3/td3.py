@@ -93,6 +93,8 @@ class TD3(OffPolicyAlgorithm):
         seed: Optional[int] = None,
         device: Union[th.device, str] = "auto",
         _init_setup_model: bool = True,
+        spatial_similarity_coef = 0.03,
+        temporal_similarity_coef = 0.05,
     ):
 
         super().__init__(
@@ -123,6 +125,10 @@ class TD3(OffPolicyAlgorithm):
         self.policy_delay = policy_delay
         self.target_noise_clip = target_noise_clip
         self.target_policy_noise = target_policy_noise
+
+        self.spatial_similarity_coef = spatial_similarity_coef
+        self.temporal_similarity_coef = temporal_similarity_coef
+
 
         if _init_setup_model:
             self._setup_model()
@@ -166,7 +172,7 @@ class TD3(OffPolicyAlgorithm):
                 next_q_values = th.cat(self.critic_target(replay_data.next_observations, next_actions), dim=1)
                 next_q_values, _ = th.min(next_q_values, dim=1, keepdim=True)
                 target_q_values = replay_data.rewards + (1 - replay_data.dones) * self.gamma * next_q_values
-
+                            
             # Get current Q-values estimates for each critic network
             current_q_values = self.critic(replay_data.observations, replay_data.actions)
 
@@ -178,11 +184,27 @@ class TD3(OffPolicyAlgorithm):
             self.critic.optimizer.zero_grad()
             critic_loss.backward()
             self.critic.optimizer.step()
-
+            
             # Delayed policy updates
             if self._n_updates % self.policy_delay == 0:
                 # Compute actor loss
                 actor_loss = -self.critic.q1_forward(replay_data.observations, self.actor(replay_data.observations)).mean()
+                
+                # Spatial Smoothness #TODO                
+                if not self.spatial_similarity_coef == None:
+                    obs_noise = replay_data.observations.clone().data.normal_(0, 0.01)
+                    obs_range = th.from_numpy((self.observation_space.high-self.observation_space.low)).reshape(1,4)
+                    obs_range = (obs_range.transpose(0,1).tile(obs_noise.shape[0])).transpose(0,1)
+                    obs_noise_scaled = obs_noise*obs_range
+
+                    similar_obs = replay_data.observations + obs_noise_scaled
+
+                    actor_loss += self.spatial_similarity_coef*F.mse_loss(self.actor(replay_data.observations),self.actor(similar_obs))
+
+                # Temporal Smoothness #TODO 
+                if not self.temporal_similarity_coef == None:
+                    actor_loss += self.temporal_similarity_coef*F.mse_loss(self.actor(replay_data.observations),self.actor(replay_data.next_observations))
+  
                 actor_losses.append(actor_loss.item())
 
                 # Optimize the actor
