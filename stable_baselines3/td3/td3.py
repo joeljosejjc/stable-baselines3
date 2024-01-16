@@ -1,4 +1,5 @@
 from typing import Any, Dict, List, Optional, Tuple, Type, TypeVar, Union
+from src.pathfollowing.params_pf import Params_pf
 
 import numpy as np
 import torch as th
@@ -93,8 +94,6 @@ class TD3(OffPolicyAlgorithm):
         seed: Optional[int] = None,
         device: Union[th.device, str] = "auto",
         _init_setup_model: bool = True,
-        spatial_similarity_coef = 0.03,
-        temporal_similarity_coef = 0.05,
     ):
 
         super().__init__(
@@ -126,8 +125,9 @@ class TD3(OffPolicyAlgorithm):
         self.target_noise_clip = target_noise_clip
         self.target_policy_noise = target_policy_noise
 
-        self.spatial_similarity_coef = spatial_similarity_coef
-        self.temporal_similarity_coef = temporal_similarity_coef
+        params_pf = Params_pf()
+        self.spatial_similarity_coef = params_pf.spatial_similarity_coef
+        self.temporal_similarity_coef = params_pf.temporal_similarity_coef
 
 
         if _init_setup_model:
@@ -198,7 +198,6 @@ class TD3(OffPolicyAlgorithm):
                     obs_noise_scaled = obs_noise*obs_range
 
                     similar_obs = replay_data.observations + obs_noise_scaled
-
                     actor_loss += self.spatial_similarity_coef*F.mse_loss(self.actor(replay_data.observations),self.actor(similar_obs))
 
                 # Temporal Smoothness #TODO 
