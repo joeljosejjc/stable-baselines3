@@ -16,6 +16,12 @@ from stable_baselines3.td3.policies import CnnPolicy, MlpPolicy, MultiInputPolic
 
 SelfTD3 = TypeVar("SelfTD3", bound="TD3")
 
+class weighted_MSELoss(th.nn.Module):
+    def __init__(self):
+        super().__init__()
+    def forward(self,inputs,targets,weights):
+        return (weights * (inputs - targets)**2).mean() 
+
 
 class TD3(OffPolicyAlgorithm):
     """
@@ -128,7 +134,7 @@ class TD3(OffPolicyAlgorithm):
         params_pf = Params_pf()
         self.spatial_similarity_coef = params_pf.spatial_similarity_coef
         self.temporal_similarity_coef = params_pf.temporal_similarity_coef
-
+        self.weighted_MSE = weighted_MSELoss()
 
         if _init_setup_model:
             self._setup_model()
@@ -202,8 +208,12 @@ class TD3(OffPolicyAlgorithm):
 
                 # Temporal Smoothness #TODO 
                 if not self.temporal_similarity_coef == None:
-                    actor_loss += self.temporal_similarity_coef*F.mse_loss(self.actor(replay_data.observations),self.actor(replay_data.next_observations))
-  
+
+                    IR_factor = 1 / (1 + 0.1 * replay_data.observations[:,0].unsqueeze(0).transpose(0,1) * replay_data.observations[:,1].unsqueeze(0).transpose(0,1) )
+                    actor_loss += self.temporal_similarity_coef*self.weighted_MSE.forward(inputs=self.actor(replay_data.observations),
+                                                                                            targets=self.actor(replay_data.next_observations),
+                                                                                            weights=IR_factor)
+
                 actor_losses.append(actor_loss.item())
 
                 # Optimize the actor
