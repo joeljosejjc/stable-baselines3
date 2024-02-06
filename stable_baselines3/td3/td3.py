@@ -192,7 +192,7 @@ class TD3(OffPolicyAlgorithm):
                 
                 # Spatial Smoothness #TODO                
                 if not self.spatial_similarity_coef == None:
-                    obs_noise = replay_data.observations.clone().data.normal_(0, 0.01)
+                    obs_noise = replay_data.observations.clone().data.normal_(0, 0.005)
                     obs_range = th.from_numpy((self.observation_space.high-self.observation_space.low)).reshape(1,4)
                     obs_range = (obs_range.transpose(0,1).tile(obs_noise.shape[0])).transpose(0,1)
                     obs_noise_scaled = obs_noise*obs_range
